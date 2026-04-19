@@ -14,10 +14,10 @@
     :root {
       --bg: #FDF6E9;
       --surface: #FFFCF7;
-      --board: #C4956A;
-      --grid: #8B6914;
+      --board: #8B5A2B;  /* walnut wood */
+      --grid: #5C3317;    /* dark wood */
       --black: #2C1810;
-      --white: #FFF8E7;
+      --white: #FFFAF0;  /* floral white */
       --accent: #E07A5F;
       --accent-dark: #c96a52;
       --text-primary: #3D2914;
@@ -190,7 +190,12 @@
     }
 
     .piece.winner {
-      animation: winnerGlow 1s ease-in-out infinite;
+      animation: winnerGlow 1s ease-in-out infinite, keepScale 350ms ease-out forwards;
+    }
+
+    @keyframes keepScale {
+      from { transform: scale(0.7); }
+      to { transform: scale(1); }
     }
 
     @keyframes winnerGlow {
