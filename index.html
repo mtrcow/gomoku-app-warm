@@ -66,6 +66,48 @@
         0 2px 8px rgba(61, 41, 20, 0.08);
     }
 
+    .mode-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 40px 20px;
+    }
+
+    .mode-title {
+      font-family: Georgia, serif;
+      font-size: 22px;
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .mode-buttons {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .mode-btn {
+      font-size: 16px;
+      padding: 16px 32px;
+      min-width: 140px;
+    }
+
+    .board.disabled {
+      pointer-events: none;
+      opacity: 0.85;
+    }
+
+    .board.computer-thinking {
+      animation: computerPulse 0.8s ease-in-out infinite;
+    }
+
+    @keyframes computerPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.8; }
+    }
+
     .board {
       display: grid;
       grid-template-columns: repeat(15, var(--cell-size));
@@ -293,13 +335,23 @@
   <h1>五子棋</h1>
   <div class="status" id="status">⚫ 黑方先行</div>
 
-  <div class="board-wrapper">
+  <!-- Mode Selection -->
+  <div class="mode-screen" id="modeScreen">
+    <div class="mode-title">選擇模式</div>
+    <div class="mode-buttons">
+      <button id="twoPlayerBtn" class="mode-btn">👥 雙人模式</button>
+      <button id="computerBtn" class="mode-btn">🤖 電腦模式</button>
+    </div>
+  </div>
+
+  <div class="board-wrapper" id="boardWrapper" style="display:none;">
     <div class="board" id="board"></div>
   </div>
 
-  <div class="buttons">
+  <div class="buttons" id="gameButtons" style="display:none;">
     <button id="newGameBtn">New Game</button>
     <button id="undoBtn" disabled>Undo</button>
+    <button id="changeModeBtn">換模式</button>
   </div>
 
   <script>
@@ -314,11 +366,19 @@
     let gameOver = false;
     let lastMovePos = null;
     let winningCells = [];
+    let gameMode = null; // 'two-player' or 'computer'
+    let computerThinking = false;
 
     const boardEl = document.getElementById('board');
     const statusEl = document.getElementById('status');
     const newGameBtn = document.getElementById('newGameBtn');
     const undoBtn = document.getElementById('undoBtn');
+    const changeModeBtn = document.getElementById('changeModeBtn');
+    const modeScreen = document.getElementById('modeScreen');
+    const boardWrapper = document.getElementById('boardWrapper');
+    const gameButtons = document.getElementById('gameButtons');
+    const twoPlayerBtn = document.getElementById('twoPlayerBtn');
+    const computerBtn = document.getElementById('computerBtn');
 
     function init() {
       board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(EMPTY));
@@ -327,9 +387,25 @@
       gameOver = false;
       lastMovePos = null;
       winningCells = [];
+      computerThinking = false;
       renderBoard();
       updateStatus();
       undoBtn.disabled = true;
+    }
+
+    function startMode(mode) {
+      gameMode = mode;
+      modeScreen.style.display = 'none';
+      boardWrapper.style.display = 'block';
+      gameButtons.style.display = 'flex';
+      init();
+    }
+
+    function showModeScreen() {
+      gameMode = null;
+      modeScreen.style.display = 'flex';
+      boardWrapper.style.display = 'none';
+      gameButtons.style.display = 'none';
     }
 
     function renderBoard() {
@@ -363,11 +439,10 @@
     }
 
     function handleClick(r, c) {
-      if (gameOver || board[r][c] !== EMPTY) return;
+      if (gameOver || board[r][c] !== EMPTY || computerThinking) return;
+      if (gameMode === 'computer' && currentPlayer === WHITE) return;
 
-      board[r][c] = currentPlayer;
-      history.push({ r, c, player: currentPlayer });
-      lastMovePos = { r, c };
+      placePiece(r, c, currentPlayer);
 
       const winner = checkWin(r, c, currentPlayer);
       if (winner) {
@@ -383,8 +458,99 @@
       renderBoard();
       updateStatus();
       undoBtn.disabled = false;
+
+      // Trigger computer move if in computer mode
+      if (gameMode === 'computer' && currentPlayer === WHITE && !gameOver) {
+        triggerComputerMove();
+      }
     }
 
+    function placePiece(r, c, player) {
+      board[r][c] = player;
+      history.push({ r, c, player });
+      lastMovePos = { r, c };
+    }
+
+    function triggerComputerMove() {
+      computerThinking = true;
+      boardEl.classList.add('disabled', 'computer-thinking');
+      updateStatus();
+
+      const delay = 500 + Math.random() * 300; // 500-800ms
+      setTimeout(() => {
+        computerMove();
+        computerThinking = false;
+        boardEl.classList.remove('disabled', 'computer-thinking');
+      }, delay);
+    }
+
+    function computerMove() {
+      const move = findBestMove();
+      if (!move) return;
+
+      const { r, c } = move;
+      placePiece(r, c, WHITE);
+
+      const winner = checkWin(r, c, WHITE);
+      if (winner) {
+        gameOver = true;
+        winningCells = winner;
+        renderBoard();
+        updateStatus();
+        undoBtn.disabled = history.length === 0;
+        return;
+      }
+
+      currentPlayer = BLACK;
+      renderBoard();
+      updateStatus();
+      undoBtn.disabled = false;
+    }
+
+    function findBestMove() {
+      const emptyCells = [];
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          if (board[r][c] === EMPTY) {
+            emptyCells.push({ r, c });
+          }
+        }
+      }
+
+      if (emptyCells.length === 0) return null;
+
+      // 1. Check if AI can win
+      for (const { r, c } of emptyCells) {
+        board[r][c] = WHITE;
+        if (checkWin(r, c, WHITE)) {
+          board[r][c] = EMPTY;
+          return { r, c };
+        }
+        board[r][c] = EMPTY;
+      }
+
+      // 2. Check if need to block player
+      for (const { r, c } of emptyCells) {
+        board[r][c] = BLACK;
+        if (checkWin(r, c, BLACK)) {
+          board[r][c] = EMPTY;
+          return { r, c };
+        }
+        board[r][c] = EMPTY;
+      }
+
+      // 3. Prefer center
+      const center = Math.floor(BOARD_SIZE / 2);
+      emptyCells.sort((a, b) => {
+        const distA = Math.abs(a.r - center) + Math.abs(a.c - center);
+        const distB = Math.abs(b.r - center) + Math.abs(b.c - center);
+        return distA - distB;
+      });
+
+      // Pick from closest 5 with some randomness
+      const topCandidates = emptyCells.slice(0, Math.min(5, emptyCells.length));
+      return topCandidates[Math.floor(Math.random() * topCandidates.length)];
+    }
     function checkWin(r, c, player) {
       const directions = [
         [[0, 1], [0, -1]],   // horizontal
@@ -422,6 +588,14 @@
       if (gameOver) {
         const winner = currentPlayer === BLACK ? '⚫ 黑方' : '⚪ 白方';
         statusEl.textContent = `🎉 ${winner}獲勝！`;
+      } else if (gameMode === 'computer') {
+        if (currentPlayer === BLACK) {
+          statusEl.textContent = '⚫ 你的回合';
+        } else if (computerThinking) {
+          statusEl.textContent = '🤖 電腦思考中...';
+        } else {
+          statusEl.textContent = '🤖 電腦行棋...';
+        }
       } else {
         const symbol = currentPlayer === BLACK ? '⚫' : '⚪';
         const label = currentPlayer === BLACK ? '黑方' : '白方';
@@ -435,25 +609,37 @@
       const last = history.pop();
       board[last.r][last.c] = EMPTY;
 
-      if (history.length > 0) {
-        const prev = history[history.length - 1];
-        lastMovePos = { r: prev.r, c: prev.c };
-        currentPlayer = prev.player;
-      } else {
+      // In computer mode, also undo computer's last move
+      if (gameMode === 'computer' && history.length > 0) {
+        const prev = history.pop();
+        board[prev.r][prev.c] = EMPTY;
+      }
+
+      // Recalculate lastMovePos and currentPlayer
+      if (history.length === 0) {
         lastMovePos = null;
         currentPlayer = BLACK;
-        undoBtn.disabled = true;
+      } else {
+        const prev = history[history.length - 1];
+        lastMovePos = { r: prev.r, c: prev.c };
+        currentPlayer = prev.player === BLACK ? WHITE : BLACK;
       }
 
       winningCells = [];
+      computerThinking = false;
+      boardEl.classList.remove('disabled', 'computer-thinking');
       renderBoard();
       updateStatus();
+      undoBtn.disabled = history.length === 0;
     }
 
     newGameBtn.addEventListener('click', init);
     undoBtn.addEventListener('click', undo);
+    changeModeBtn.addEventListener('click', showModeScreen);
+    twoPlayerBtn.addEventListener('click', () => startMode('two-player'));
+    computerBtn.addEventListener('click', () => startMode('computer'));
 
-    init();
+    showModeScreen();
   </script>
 
 </body>
