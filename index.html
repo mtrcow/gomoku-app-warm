@@ -288,7 +288,36 @@
       box-shadow: none;
     }
 
-    /* Responsive */
+    .difficulty-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    padding: 40px 20px;
+  }
+
+  .difficulty-buttons {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .diff-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 16px;
+    min-width: 90px;
+    font-size: 14px;
+    line-height: 1.3;
+  }
+
+  .diff-btn .stars {
+    font-size: 20px;
+  }
+ */
     @media (max-width: 700px) {
       :root {
         --cell-size: min(6vw, 36px);
@@ -344,6 +373,13 @@
     </div>
   </div>
 
+  <!-- Difficulty Selection -->
+  <div class="difficulty-screen" id="difficultyScreen" style="display:none;">
+    <div class="mode-title">選擇難度</div>
+    <div class="difficulty-buttons" id="difficultyButtons"></div>
+    <button id="backToModeBtn" style="margin-top:8px;background:#9A8B7A;font-size:14px;padding:8px 20px;">← 返回</button>
+  </div>
+
   <div class="board-wrapper" id="boardWrapper" style="display:none;">
     <div class="board" id="board"></div>
   </div>
@@ -368,6 +404,7 @@
     let winningCells = [];
     let gameMode = null; // 'two-player' or 'computer'
     let computerThinking = false;
+    let difficulty = 3; // 1-5, default level 3
 
     const boardEl = document.getElementById('board');
     const statusEl = document.getElementById('status');
@@ -375,6 +412,9 @@
     const undoBtn = document.getElementById('undoBtn');
     const changeModeBtn = document.getElementById('changeModeBtn');
     const modeScreen = document.getElementById('modeScreen');
+  const difficultyScreen = document.getElementById('difficultyScreen');
+  const difficultyButtons = document.getElementById('difficultyButtons');
+  const backToModeBtn = document.getElementById('backToModeBtn');
     const boardWrapper = document.getElementById('boardWrapper');
     const gameButtons = document.getElementById('gameButtons');
     const twoPlayerBtn = document.getElementById('twoPlayerBtn');
@@ -401,9 +441,41 @@
       init();
     }
 
+    function showDifficultyScreen() {
+      difficultyScreen.style.display = 'flex';
+      boardWrapper.style.display = 'none';
+      gameButtons.style.display = 'none';
+      buildDifficultyButtons();
+    }
+
+    function buildDifficultyButtons() {
+      difficultyButtons.innerHTML = '';
+      const levels = [
+        { level: 1, stars: '⭐', label: '新手' },
+        { level: 2, stars: '⭐⭐', label: '業餘' },
+        { level: 3, stars: '⭐⭐⭐', label: '普通' },
+        { level: 4, stars: '⭐⭐⭐⭐', label: '高手' },
+        { level: 5, stars: '⭐⭐⭐⭐⭐', label: '大師' }
+      ];
+      levels.forEach(({ level, stars, label }) => {
+        const btn = document.createElement('button');
+        btn.className = 'diff-btn';
+        btn.innerHTML = `<span class="stars">${stars}</span><span>${label}</span>`;
+        btn.addEventListener('click', () => startWithDifficulty(level));
+        difficultyButtons.appendChild(btn);
+      });
+    }
+
+    function startWithDifficulty(level) {
+      difficulty = level;
+      difficultyScreen.style.display = 'none';
+      startMode('computer');
+    }
+
     function showModeScreen() {
       gameMode = null;
       modeScreen.style.display = 'flex';
+      difficultyScreen.style.display = 'none';
       boardWrapper.style.display = 'none';
       gameButtons.style.display = 'none';
     }
@@ -476,7 +548,8 @@
       boardEl.classList.add('disabled', 'computer-thinking');
       updateStatus();
 
-      const delay = 500 + Math.random() * 300; // 500-800ms
+      const baseDelay = 400 + (difficulty - 1) * 250; // 400ms L1 → 1400ms L5
+      const delay = baseDelay + Math.random() * 200;
       setTimeout(() => {
         computerMove();
         computerThinking = false;
@@ -507,49 +580,194 @@
       undoBtn.disabled = false;
     }
 
+    // ─── AI Strategy Dispatcher ────────────────────────────────────────────
     function findBestMove() {
-      const emptyCells = [];
-      for (let r = 0; r < BOARD_SIZE; r++) {
-        for (let c = 0; c < BOARD_SIZE; c++) {
-          if (board[r][c] === EMPTY) {
-            emptyCells.push({ r, c });
-          }
-        }
-      }
+      if (difficulty <= 3) return findBestMoveHeuristic();
+      return findBestMoveMinimax();
+    }
 
+    // ─── Level 1-3: Heuristic AI ────────────────────────────────────────────
+    function findBestMoveHeuristic() {
+      const emptyCells = getCandidateCells();
       if (emptyCells.length === 0) return null;
 
-      // 1. Check if AI can win
+      // 1. Win if possible
       for (const { r, c } of emptyCells) {
         board[r][c] = WHITE;
-        if (checkWin(r, c, WHITE)) {
-          board[r][c] = EMPTY;
-          return { r, c };
-        }
+        if (checkWin(r, c, WHITE)) { board[r][c] = EMPTY; return { r, c }; }
         board[r][c] = EMPTY;
       }
 
-      // 2. Check if need to block player
+      // 2. Block player's winning move
       for (const { r, c } of emptyCells) {
         board[r][c] = BLACK;
-        if (checkWin(r, c, BLACK)) {
-          board[r][c] = EMPTY;
-          return { r, c };
-        }
+        if (checkWin(r, c, BLACK)) { board[r][c] = EMPTY; return { r, c }; }
         board[r][c] = EMPTY;
       }
 
-      // 3. Prefer center
-      const center = Math.floor(BOARD_SIZE / 2);
-      emptyCells.sort((a, b) => {
-        const distA = Math.abs(a.r - center) + Math.abs(a.c - center);
-        const distB = Math.abs(b.r - center) + Math.abs(b.c - center);
-        return distA - distB;
+      if (difficulty === 1) {
+        // Level 1: pick random from top 5 closest to center
+        const center = Math.floor(BOARD_SIZE / 2);
+        emptyCells.sort((a, b) => {
+          const dA = Math.abs(a.r - center) + Math.abs(a.c - center);
+          const dB = Math.abs(b.r - center) + Math.abs(b.c - center);
+          return dA - dB;
+        });
+        const top = emptyCells.slice(0, Math.min(5, emptyCells.length));
+        return top[Math.floor(Math.random() * top.length)];
+      }
+
+      // Level 2-3: score all candidates
+      const scored = emptyCells.map(({ r, c }) => {
+        const score = evaluatePosition(r, c, WHITE) +
+          (difficulty >= 3 ? evaluatePosition(r, c, BLACK) * 0.9 : 0);
+        return { r, c, score };
       });
 
-      // Pick from closest 5 with some randomness
-      const topCandidates = emptyCells.slice(0, Math.min(5, emptyCells.length));
-      return topCandidates[Math.floor(Math.random() * topCandidates.length)];
+      scored.sort((a, b) => b.score - a.score);
+      // Pick from top 3 with slight randomness to feel more natural
+      const top = scored.slice(0, Math.min(3, scored.length));
+      return top[Math.floor(Math.random() * top.length)];
+    }
+
+    // Get cells that are empty AND adjacent to at least one existing piece
+    function getCandidateCells() {
+      const candidates = [];
+      const hasPieces = history.length > 0;
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          if (board[r][c] !== EMPTY) continue;
+          if (!hasPieces) { candidates.push({ r, c }); continue; }
+          // Only consider cells near existing pieces
+          let near = false;
+          outer: for (let dr = -2; dr <= 2; dr++) {
+            for (let dc = -2; dc <= 2; dc++) {
+              const nr = r + dr, nc = c + dc;
+              if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] !== EMPTY) {
+                near = true; break outer;
+              }
+            }
+          }
+          if (near) candidates.push({ r, c });
+        }
+      }
+      // Fallback: if board is empty, return center
+      if (candidates.length === 0) {
+        const center = Math.floor(BOARD_SIZE / 2);
+        return [{ r: center, c: center }];
+      }
+      return candidates;
+    }
+
+    // Evaluate how good a position is for `player`
+    // Score = line bonuses + center distance bonus
+    function evaluatePosition(r, c, player) {
+      const directions = [[0, 1], [1, 0], [1, 1], [1, -1]];
+      let totalScore = 0;
+      const center = Math.floor(BOARD_SIZE / 2);
+      const centerDist = Math.max(0, 7 - (Math.abs(r - center) + Math.abs(c - center)));
+      totalScore += centerDist * 2;
+
+      for (const [dr, dc] of directions) {
+        const line = [[r, c]];
+        let openEnds = 0;
+
+        // Forward direction
+        let nr = r + dr, nc = c + dc;
+        while (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === player) {
+          line.push([nr, nc]); nr += dr; nc += dc;
+        }
+        if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === EMPTY) openEnds++;
+
+        // Backward direction
+        nr = r - dr; nc = c - dc;
+        while (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === player) {
+          line.push([nr, nc]); nr -= dr; nc -= dc;
+        }
+        if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === EMPTY) openEnds++;
+
+        if (line.length >= 2 && openEnds === 2) {
+          // Open-ended 2+: significant threat
+          const mult = line.length === 4 ? 50000 : line.length === 3 ? 5000 : line.length === 2 ? 200 : 30;
+          totalScore += mult;
+        } else if (line.length >= 2) {
+          const mult = line.length === 4 ? 1000 : line.length === 3 ? 100 : line.length === 2 ? 20 : 5;
+          totalScore += mult;
+        }
+      }
+
+      return totalScore;
+    }
+
+    // ─── Level 4-5: Minimax AI ──────────────────────────────────────────────
+    function findBestMoveMinimax() {
+      const depth = difficulty === 5 ? 4 : 3;
+      const emptyCells = getCandidateCells();
+      if (emptyCells.length === 0) return null;
+
+      let bestScore = -Infinity;
+      let bestMove = emptyCells[0];
+      const alpha = -Infinity;
+      const beta = Infinity;
+
+      for (const { r, c } of emptyCells) {
+        board[r][c] = WHITE;
+        const score = minimax(depth - 1, alpha, beta, false);
+        board[r][c] = EMPTY;
+        if (score > bestScore) {
+          bestScore = score;
+          bestMove = { r, c };
+        }
+      }
+
+      return bestMove;
+    }
+
+    function minimax(depth, alpha, beta, isMaximizing) {
+      if (depth === 0) return evaluateBoard();
+
+      const emptyCells = getCandidateCells();
+      if (emptyCells.length === 0) return evaluateBoard();
+
+      const player = isMaximizing ? WHITE : BLACK;
+
+      if (isMaximizing) {
+        let maxScore = -Infinity;
+        for (const { r, c } of emptyCells) {
+          board[r][c] = player;
+          // Check for win
+          if (checkWin(r, c, player)) { board[r][c] = EMPTY; return 1000000 + depth; }
+          const score = minimax(depth - 1, alpha, beta, false);
+          board[r][c] = EMPTY;
+          maxScore = Math.max(maxScore, score);
+          alpha = Math.max(alpha, score);
+          if (beta <= alpha) break;
+        }
+        return maxScore;
+      } else {
+        let minScore = Infinity;
+        for (const { r, c } of emptyCells) {
+          board[r][c] = player;
+          if (checkWin(r, c, player)) { board[r][c] = EMPTY; return -1000000 - depth; }
+          const score = minimax(depth - 1, alpha, beta, true);
+          board[r][c] = EMPTY;
+          minScore = Math.min(minScore, score);
+          beta = Math.min(beta, score);
+          if (beta <= alpha) break;
+        }
+        return minScore;
+      }
+    }
+
+    function evaluateBoard() {
+      let score = 0;
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          if (board[r][c] === WHITE) score += evaluatePosition(r, c, WHITE);
+          else if (board[r][c] === BLACK) score -= evaluatePosition(r, c, BLACK);
+        }
+      }
+      return score;
     }
     function checkWin(r, c, player) {
       const directions = [
@@ -636,8 +854,9 @@
     newGameBtn.addEventListener('click', init);
     undoBtn.addEventListener('click', undo);
     changeModeBtn.addEventListener('click', showModeScreen);
+    backToModeBtn.addEventListener('click', showModeScreen);
     twoPlayerBtn.addEventListener('click', () => startMode('two-player'));
-    computerBtn.addEventListener('click', () => startMode('computer'));
+    computerBtn.addEventListener('click', showDifficultyScreen);
 
     showModeScreen();
   </script>
