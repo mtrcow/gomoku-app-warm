@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>五子棋 — 暖色舒適</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #FDF6E9;
+      --surface: #FFFCF7;
+      --board: #C4956A;
+      --grid: #8B6914;
+      --black: #2C1810;
+      --white: #FFF8E7;
+      --accent: #E07A5F;
+      --accent-dark: #c96a52;
+      --text-primary: #3D2914;
+      --text-secondary: #9A8B7A;
+      --winner-glow: #F4A261;
+      --cell-size: 44px;
+      --piece-size: 38px;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background-color: var(--bg);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+      color: var(--text-primary);
+    }
+
+    h1 {
+      font-family: Georgia, serif;
+      font-weight: 600;
+      font-size: 28px;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+      text-align: center;
+    }
+
+    .status {
+      font-size: 16px;
+      color: var(--accent);
+      font-weight: 500;
+      margin-bottom: 20px;
+      height: 24px;
+      text-align: center;
+      transition: color 0.3s ease;
+    }
+
+    .board-wrapper {
+      background: var(--surface);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow:
+        0 4px 24px rgba(61, 41, 20, 0.12),
+        0 2px 8px rgba(61, 41, 20, 0.08);
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(15, var(--cell-size));
+      grid-template-rows: repeat(15, var(--cell-size));
+      background-color: var(--board);
+      border-radius: 8px;
+      position: relative;
+      /* subtle wood grain effect */
+      background-image:
+        repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent 20px,
+          rgba(139, 105, 20, 0.05) 20px,
+          rgba(139, 105, 20, 0.05) 21px
+        ),
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 40px,
+          rgba(139, 105, 20, 0.03) 40px,
+          rgba(139, 105, 20, 0.03) 41px
+        );
+      box-shadow: inset 0 2px 8px rgba(61, 41, 20, 0.2);
+    }
+
+    .cell {
+      width: var(--cell-size);
+      height: var(--cell-size);
+      position: relative;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* Grid lines via borders */
+      border-right: 1px solid var(--grid);
+      border-bottom: 1px solid var(--grid);
+    }
+
+    /* Top row: no top border */
+    .cell:nth-child(-n+15) {
+      border-top: 1px solid var(--grid);
+    }
+
+    /* Left column: no left border */
+    .cell:nth-child(15n+1) {
+      border-left: 1px solid var(--grid);
+    }
+
+    /* Remove double borders at edges */
+    .cell:nth-child(1) {
+      border-top-left-radius: 8px;
+    }
+    .cell:nth-child(15) {
+      border-top-right-radius: 8px;
+    }
+    .cell:nth-child(225) {
+      border-bottom-left-radius: 8px;
+    }
+    .cell:nth-child(240) {
+      border-bottom-right-radius: 8px;
+    }
+
+    .cell::before {
+      content: '';
+      position: absolute;
+      inset: 3px;
+      border-radius: 50%;
+      background: transparent;
+      transition: background 0.15s ease;
+    }
+
+    .cell:hover::before {
+      background: rgba(244, 162, 97, 0.25);
+    }
+
+    .piece {
+      width: var(--piece-size);
+      height: var(--piece-size);
+      border-radius: 50%;
+      position: absolute;
+      z-index: 2;
+      transform: scale(0.7);
+      animation: placePiece 350ms ease-out forwards;
+    }
+
+    @keyframes placePiece {
+      0% { transform: scale(0.7); }
+      70% { transform: scale(1.05); }
+      100% { transform: scale(1); }
+    }
+
+    .piece.black {
+      background: radial-gradient(circle at 35% 35%, #4a2e1e, var(--black) 60%);
+      box-shadow:
+        0 3px 8px rgba(44, 24, 16, 0.4),
+        inset 0 -2px 4px rgba(0,0,0,0.3),
+        inset 0 2px 4px rgba(255,255,255,0.1);
+    }
+
+    .piece.white {
+      background: radial-gradient(circle at 35% 35%, #ffffff, var(--white) 60%);
+      border: 1px solid #d4c5a9;
+      box-shadow:
+        0 3px 8px rgba(44, 24, 16, 0.25),
+        inset 0 -2px 4px rgba(0,0,0,0.08),
+        inset 0 2px 4px rgba(255,255,255,0.8);
+    }
+
+    /* Last move marker */
+    .piece.last-move::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--winner-glow);
+      opacity: 0.7;
+    }
+
+    .piece.winner {
+      animation: winnerGlow 1s ease-in-out infinite;
+    }
+
+    @keyframes winnerGlow {
+      0%, 100% {
+        box-shadow:
+          0 0 0 0 rgba(244, 162, 97, 0),
+          0 3px 8px rgba(44, 24, 16, 0.3);
+      }
+      50% {
+        box-shadow:
+          0 0 16px 6px rgba(244, 162, 97, 0.6),
+          0 3px 8px rgba(44, 24, 16, 0.3);
+      }
+    }
+
+    .buttons {
+      display: flex;
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    button {
+      font-family: system-ui, sans-serif;
+      font-size: 15px;
+      font-weight: 500;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      background: var(--accent);
+      color: white;
+      box-shadow:
+        0 4px 12px rgba(224, 122, 95, 0.3),
+        0 2px 4px rgba(224, 122, 95, 0.2);
+      transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+    }
+
+    button:hover {
+      background: var(--accent-dark);
+      box-shadow:
+        0 6px 16px rgba(224, 122, 95, 0.4),
+        0 2px 4px rgba(224, 122, 95, 0.2);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    button:disabled {
+      background: #c4b49a;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    /* Responsive */
+    @media (max-width: 700px) {
+      :root {
+        --cell-size: min(6vw, 36px);
+        --piece-size: calc(var(--cell-size) - 6px);
+      }
+
+      body {
+        padding: 16px 8px;
+      }
+
+      h1 {
+        font-size: 22px;
+      }
+
+      .board-wrapper {
+        padding: 10px;
+      }
+
+      .buttons {
+        gap: 12px;
+        margin-top: 20px;
+      }
+
+      button {
+        padding: 10px 20px;
+        font-size: 14px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      :root {
+        --cell-size: min(6vw, 28px);
+        --piece-size: calc(var(--cell-size) - 4px);
+      }
+
+      .status {
+        font-size: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>五子棋</h1>
+  <div class="status" id="status">⚫ 黑方先行</div>
+
+  <div class="board-wrapper">
+    <div class="board" id="board"></div>
+  </div>
+
+  <div class="buttons">
+    <button id="newGameBtn">New Game</button>
+    <button id="undoBtn" disabled>Undo</button>
+  </div>
+
+  <script>
+    const BOARD_SIZE = 15;
+    const EMPTY = 0;
+    const BLACK = 1;
+    const WHITE = 2;
+
+    let board = [];
+    let history = [];
+    let currentPlayer = BLACK;
+    let gameOver = false;
+    let lastMovePos = null;
+    let winningCells = [];
+
+    const boardEl = document.getElementById('board');
+    const statusEl = document.getElementById('status');
+    const newGameBtn = document.getElementById('newGameBtn');
+    const undoBtn = document.getElementById('undoBtn');
+
+    function init() {
+      board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(EMPTY));
+      history = [];
+      currentPlayer = BLACK;
+      gameOver = false;
+      lastMovePos = null;
+      winningCells = [];
+      renderBoard();
+      updateStatus();
+      undoBtn.disabled = true;
+    }
+
+    function renderBoard() {
+      boardEl.innerHTML = '';
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          cell.dataset.row = r;
+          cell.dataset.col = c;
+
+          if (board[r][c] !== EMPTY) {
+            const piece = document.createElement('div');
+            piece.className = `piece ${board[r][c] === BLACK ? 'black' : 'white'}`;
+
+            if (lastMovePos && lastMovePos.r === r && lastMovePos.c === c) {
+              piece.classList.add('last-move');
+            }
+
+            if (winningCells.some(([wr, wc]) => wr === r && wc === c)) {
+              piece.classList.add('winner');
+            }
+
+            cell.appendChild(piece);
+          }
+
+          cell.addEventListener('click', () => handleClick(r, c));
+          boardEl.appendChild(cell);
+        }
+      }
+    }
+
+    function handleClick(r, c) {
+      if (gameOver || board[r][c] !== EMPTY) return;
+
+      board[r][c] = currentPlayer;
+      history.push({ r, c, player: currentPlayer });
+      lastMovePos = { r, c };
+
+      const winner = checkWin(r, c, currentPlayer);
+      if (winner) {
+        gameOver = true;
+        winningCells = winner;
+        renderBoard();
+        updateStatus();
+        undoBtn.disabled = history.length === 0;
+        return;
+      }
+
+      currentPlayer = currentPlayer === BLACK ? WHITE : BLACK;
+      renderBoard();
+      updateStatus();
+      undoBtn.disabled = false;
+    }
+
+    function checkWin(r, c, player) {
+      const directions = [
+        [[0, 1], [0, -1]],   // horizontal
+        [[1, 0], [-1, 0]],   // vertical
+        [[1, 1], [-1, -1]], // diagonal
+        [[1, -1], [-1, 1]]  // anti-diagonal
+      ];
+
+      for (const [dir1, dir2] of directions) {
+        const cells = [[r, c]];
+
+        // dir1
+        let nr = r + dir1[0], nc = c + dir1[1];
+        while (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === player) {
+          cells.push([nr, nc]);
+          nr += dir1[0];
+          nc += dir1[1];
+        }
+
+        // dir2
+        nr = r + dir2[0]; nc = c + dir2[1];
+        while (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === player) {
+          cells.push([nr, nc]);
+          nr += dir2[0];
+          nc += dir2[1];
+        }
+
+        if (cells.length >= 5) return cells;
+      }
+
+      return null;
+    }
+
+    function updateStatus() {
+      if (gameOver) {
+        const winner = currentPlayer === BLACK ? '⚫ 黑方' : '⚪ 白方';
+        statusEl.textContent = `🎉 ${winner}獲勝！`;
+      } else {
+        const symbol = currentPlayer === BLACK ? '⚫' : '⚪';
+        const label = currentPlayer === BLACK ? '黑方' : '白方';
+        statusEl.textContent = `${symbol} ${label}行棋`;
+      }
+    }
+
+    function undo() {
+      if (history.length === 0 || gameOver) return;
+
+      const last = history.pop();
+      board[last.r][last.c] = EMPTY;
+
+      if (history.length > 0) {
+        const prev = history[history.length - 1];
+        lastMovePos = { r: prev.r, c: prev.c };
+        currentPlayer = prev.player;
+      } else {
+        lastMovePos = null;
+        currentPlayer = BLACK;
+        undoBtn.disabled = true;
+      }
+
+      winningCells = [];
+      renderBoard();
+      updateStatus();
+    }
+
+    newGameBtn.addEventListener('click', init);
+    undoBtn.addEventListener('click', undo);
+
+    init();
+  </script>
+
+</body>
+</html>
