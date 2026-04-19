@@ -190,12 +190,8 @@
     }
 
     .piece.winner {
-      animation: winnerGlow 1s ease-in-out infinite, keepScale 350ms ease-out forwards;
-    }
-
-    @keyframes keepScale {
-      from { transform: scale(0.7); }
-      to { transform: scale(1); }
+      transform: scale(1) !important;
+      animation: winnerGlow 1s ease-in-out infinite;
     }
 
     @keyframes winnerGlow {
